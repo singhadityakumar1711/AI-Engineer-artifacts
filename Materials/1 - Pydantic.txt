@@ -1,0 +1,253 @@
+
+Pydantic
+
+Most modern AI frameworks (LangChain, LangGraph, OpenAI SDK, FastAPI, Instructor, LlamaIndex, CrewAI, MCP servers) use Pydantic extensively for:
+
+Validating LLM outputs
+Defining structured inputs/outputs
+Configuration management
+API contracts
+Agent state management
+
+--------------
+1. BaseModel
+--------------
+from pydantic import BaseModel
+
+class User(BaseModel):
+    name: str
+    age: int
+
+user = User(name="Aditya", age=24)
+
+print(user.name)
+
+Output: Aditya
+
+-------------------
+2. Type Validation
+-------------------
+class User(BaseModel):
+    age: int
+
+user = User(age="24")
+
+print(user.age)
+
+Output: 24
+
+--------------------
+3. Field Constraints
+--------------------
+from pydantic import BaseModel, Field
+
+class Product(BaseModel):
+    price: float = Field(gt=0) --gt: greather than
+    rating: float = Field(ge=0, le=5)  -- ge: greater than or equal
+	
+	
+Product(price=100, rating=4.5) --Valid
+Product(price=-10, rating=6)  --Validation error
+
+-------------------
+4. Optional Fields
+-------------------
+from typing import Optional
+
+class User(BaseModel):
+    name: str
+    phone: Optional[str] = None  -- phone can be a str or None. The default value is None
+
+Equivalent Modern Python (3.10+)
+phone: str | None = None
+
+-------------------------
+5. Lists and Dictionaries
+-------------------------
+from typing import List
+
+class Document(BaseModel):
+    chunks: List[str]
+	
+doc = Document(
+    chunks=["chunk1", "chunk2"]
+)
+
+-----------------
+6. Nested Models
+-----------------
+from pydantic import BaseModel
+
+class Address(BaseModel):
+    city: str
+    country: str
+
+class User(BaseModel):
+    name: str
+    address: Address
+
+user = User(
+    name="Aditya",
+    address={
+        "city": "Bangalore",
+        "country": "India"
+    }
+)
+
+Accessing Nested Fields: print(user.address.city) -- Bangalore
+
+---------------
+7. model_dump()
+---------------
+user.model_dump() --Converts model → dictionary.
+
+{
+    "name": "Aditya",
+    "address": {
+        "city": "Bangalore",
+        "country": "India"
+    }
+}
+
+-------------------
+8. model_validate()
+-------------------
+data = {
+    "name": "Aditya",
+    "age": 24
+}
+
+user = User.model_validate(data) --Converts dictionary → model.
+user = User(**data) --equivalent 
+
+-------------
+9.Validators
+-------------
+from pydantic import field_validator
+
+class User(BaseModel):
+    age: int
+
+    @field_validator("age")
+    @classmethod
+    def validate_age(cls, value):  -- cls = the model class (User); value = the field value being validated
+        if value < 18:
+            raise ValueError("Must be adult")
+        return value
+        
+user = User(age=24)
+print(user) --valid
+
+user = User(age=15)
+print(user) --ValidationError:age ;Value error, Must be adult
+
+
+--Validators don't just check values—they can transform them.
+class User(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        return value.strip().title()
+        
+user = User(name="   aditya kumar singh   ")
+print(user.name)  --Aditya Kumar Singh
+
+-- Multiple Fields
+from pydantic import BaseModel, field_validator
+
+class User(BaseModel):
+    age: int
+    email: str
+
+    @field_validator("age")
+    @classmethod
+    def validate_age(cls, value):
+        if value < 18:
+            raise ValueError("Must be adult")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value):
+        if "@" not in value:
+            raise ValueError("Invalid email")
+        return value
+        
+ -- When to Use Field() vs field_validator()?
+ -- Use Field() for simple constraints
+ age: int = Field(ge=18)
+temperature: float = Field(ge=0, le=2)
+
+--Use field_validator() for custom logic
+@field_validator("email")
+@classmethod
+def validate_company_email(cls, value):
+    if not value.endswith("@company.com"):
+        raise ValueError("Company email required")
+    return value
+    
+    
+-------------
+10. Enums
+-------------
+--Useful when AI must return specific categories.
+from enum import Enum
+from pydantic import BaseModel
+
+class Sentiment(str, Enum):
+    positive = "positive"
+    negative = "negative"
+    neutral = "neutral"
+
+class Review(BaseModel):
+    sentiment: Sentiment
+    
+review = Review(sentiment="positive")
+print(review)  --sentiment=<Sentiment.positive: 'positive'>
+
+---------------------------------------
+11. Loading secret keys from .env file
+---------------------------------------
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from openai import OpenAI
+
+class Settings(BaseSettings):
+    OPENAI_API_KEY: str
+    DATABASE_URL: str
+
+    model_config = SettingsConfigDict(
+        env_file=".env"
+    )
+settings = Settings()
+
+client = OpenAI(
+    api_key=settings.OPENAI_API_KEY
+)
+
+-----------------
+12. API Contracts
+-----------------
+from pydantic import BaseModel
+from fastapi import FastAPI
+
+class SummaryRequest(BaseModel):
+    text: str
+    max_words: int
+    
+class SummaryResponse(BaseModel):
+    summary: str
+    word_count: int
+
+app = FastAPI()
+
+@app.post("/summarize")
+def summarize(
+    request: SummaryRequest
+) -> SummaryResponse:
+
+    return SummaryResponse(
+        summary="Short version",
+        word_count=2
+    )
